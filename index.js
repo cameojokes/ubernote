@@ -22,4 +22,4 @@ app.get('/', restify.plugins.serveStatic({
 }));
 
 // eslint-disable-next-line no-console
-app.listen(8080, () => console.log('Started...'));
+app.listen(80, () => console.log('Started...'));
