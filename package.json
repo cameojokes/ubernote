@@ -1,0 +1,25 @@
+{
+  "name": "ubernote",
+  "version": "0.0.1",
+  "description": "Get notified when it's time to call an uber.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "James Cooke <jamesedwardcooke@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "request": "^2.81.0",
+    "request-promise": "^4.2.1",
+    "restify": "^5.2.0",
+    "restify-routify": "0.0.5"
+  },
+  "devDependencies": {
+    "eslint": "^4.5.0",
+    "eslint-config-airbnb-base": "^11.3.2",
+    "eslint-plugin-import": "^2.7.0"
+  },
+  "scripts": {
+    "postinstall": "ln -s ../ ./node_modules/local"
+  }
+}

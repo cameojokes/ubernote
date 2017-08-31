@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<head>
+  <style>
+    #map {
+      height: 100%;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    input {
+      width: 200px;
+      height: 30px;
+      font-size: 20px;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+      margin: 5px;
+      padding: 0px 4px;
+    }
+    input:focus {
+      background-color: #fff;
+      font-color: #000;
+    }
+    input, #estimates {
+      font-family: system-ui;
+      font-weight: 200;
+      letter-spacing: 1px;
+      background-color: rgba(255, 255, 255, 0.75);
+    }
+    #estimates {
+      margin: 10px;
+      padding: 5px;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+      display: none;
+    }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+  <div id="controls" style="position: absolute; top: 10px; left: 10px; z-index: 100">
+    <input id="origin" type="text" placeholder="Origin" tabindex="1">
+    <input id="destination" type="text" placeholder="Destination" tabindex="2">
+    <input id="datetime" type="text" placeholder="Departure Time">
+    <div id="estimates"></div>
+  </div>
+  <div id="map"></div>
+  <script>
+    var map;
+    function initMap() {
+      var now = new Date();
+      var datePicker = flatpickr('#datetime', {
+        altInput: true,
+        enableTime: true,
+        minDate: now
+      })
+      map = new Map(datePicker);
+    }
+
+    function Map(datePicker) {
+      this.datePicker = datePicker;
+
+      this.map = new google.maps.Map(document.getElementById('map'), {
+        mapTypeControl: false,
+        center: {lat: 30.2672, lng: -97.7431},
+        zoom: 13
+      });
+
+      this.travelMode = 'DRIVING';
+
+      this.directionsService = new google.maps.DirectionsService;
+      this.directionsDisplay = new google.maps.DirectionsRenderer;
+      this.distanceService = new google.maps.DistanceMatrixService;
+      this.directionsDisplay.setMap(this.map);
+
+      var originInput = document.getElementById('origin');
+      var destinationInput = document.getElementById('destination');
+
+      var originAutocomplete = new google.maps.places.Autocomplete(
+        originInput,
+        {placeIdOnly: true}
+      );
+      var destinationAutocomplete = new google.maps.places.Autocomplete(
+        destinationInput,
+        {placeIdOnly: true}
+      );
+
+      this.setupPlaceChangedListener(originAutocomplete, 'ORIG');
+      this.setupPlaceChangedListener(destinationAutocomplete, 'DEST');
+    }
+
+    Map.prototype.setupPlaceChangedListener = function (autocomplete, mode) {
+      var me = this;
+      autocomplete.bindTo('bounds', this.map);
+      autocomplete.addListener('place_changed', function () {
+        var place = autocomplete.getPlace();
+        if (!place.place_id) {
+          window.alert("Please select an option from the dropdown list.");
+          return;
+        }
+        if (mode === 'ORIG') {
+          me.originPlaceId = place.place_id;
+        } else {
+          me.destinationPlaceId = place.place_id;
+        }
+        me.route();
+      });
+    };
+
+    Map.prototype.route = function() {
+      if (!this.originPlaceId || !this.destinationPlaceId) {
+        return;
+      }
+      var me = this;
+
+      this.directionsService.route({
+        origin: {'placeId': this.originPlaceId},
+        destination: {'placeId': this.destinationPlaceId},
+        travelMode: this.travelMode
+      },
+      function(response, status) {
+        if (status === 'OK') {
+          var startLocation = response.routes[0].legs[0].start_location;
+          var endLocation = response.routes[0].legs[0].end_location;
+
+          me.origin = new google.maps.LatLng(
+            startLocation.lat(),
+            startLocation.lng()
+          );
+          me.destination = new google.maps.LatLng(
+            endLocation.lat(),
+            endLocation.lng()
+          );
+
+          me.directionsDisplay.setDirections(response);
+          me.distance(origin, destination);
+        } else {
+          window.alert('Directions request failed due to ' + status);
+        }
+      });
+    };
+
+    Map.prototype.distance = function() {
+      var me = this;
+      var departureTime = this.datePicker.selectedDates[0]
+        ? new Date(this.datePicker.selectedDates[0])
+        : new Date();
+
+      var rideUrl = '/rides/estimates';
+      rideUrl = rideUrl + '?lat=' + me.origin.lat() + '&lng=' + me.origin.lng()
+
+      Promise.all([
+        new Promise(function(resolve, reject) {
+          me.distanceService.getDistanceMatrix(
+            {
+              origins: [me.origin],
+              destinations: [me.destination],
+              travelMode: 'DRIVING',
+              drivingOptions: {
+                departureTime: departureTime
+              }
+            },
+            function(response) {
+              var secondsInTraffic = response.rows[0].elements[0].duration_in_traffic.value;
+
+              resolve(moment(Date.now() + secondsInTraffic * 1000).fromNow(true));
+            }
+          );
+        }),
+        fetch(rideUrl)
+          .then(function(response) {
+            return response.json();
+          })
+          .then(function(response) {
+            return moment(Date.now() + response.estimate * 1000).fromNow(true);
+          })
+      ])
+        .then(function(estimates) {
+          var estimatesElement = document.getElementById('estimates');
+
+          estimatesElement.innerHTML = 'Estimated Drive: '
+            + estimates[0] + '- Estimated Ride Arrival: ' + estimates[1];
+          estimatesElement.style.display = 'block';
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded',function() {
+      document.querySelector('input#datetime').onchange=changeDeparture;
+    },false);
+
+    function changeDeparture() {
+      if (map.origin && map.destination) {
+        map.distance();
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/flatpickr"></script>
+  <script src="https://unpkg.com/moment@2.18.1"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDxeTFCGcmIe_hO9UpmxKYgMeagQQNVw-k&libraries=places&callback=initMap" async defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/async/2.5.0/async.js"></script>
+</body>
+</html>
